@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#14161b">
+<title>Colirios antiglaucomatosos · Meixoeiro</title>
+
+<!-- Única dependencia externa permitida: PapaParse (CDN) para parsear el CSV. -->
+<script defer src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+<style>
+/* ===========================================================================
+   TEMA — oscuro, gris cálido-azulado. Nada de blanco/negro puros.
+   Contraste AA. Un único acento (periwinkle) + semánticos que SON información.
+   =========================================================================== */
+:root{
+  --bg:        #14161b;
+  --bg-grad:   #171a21;
+  --surface:   #1b1e26;
+  --surface-2: #222630;
+  --border:    #2b303c;
+  --border-2:  #363c4a;
+
+  --text:      #e7e4dd;   /* off-white cálido, no #fff */
+  --text-dim:  #a6abb5;
+  --text-faint:#71767f;
+
+  --accent:    #8ea2ff;   /* marca / foco / principio activo (info clave) */
+  --accent-dim:#3a4270;
+  --accent-bg: #20243a;
+
+  /* Semánticos — conservante */
+  --sin:   #58bd93;  --sin-bg:  #16281f;  --sin-bd:  #285a44;
+  --con:   #e2a851;  --con-bg:  #2a2213;  --con-bd:  #5c4a24;
+  --ambos: #d98fb4;  --ambos-bg:#2a1a22;  --ambos-bd:#5a3446;
+  --unk:   #8b909b;  --unk-bg:  #22252d;  --unk-bd:  #3a3f4a;
+  /* Semántico — stock */
+  --out:   #e5776f;  --out-bg:  #2b1817;  --out-bd:  #5b2f2c;
+
+  --radius: 14px;
+  --radius-sm: 9px;
+  --tap: 44px;               /* área táctil mínima */
+  --maxw: 860px;
+
+  /* Escala tipográfica deliberada */
+  --font-ui: "Avenir Next","Segoe UI Variable",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --font-brand: "Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{font-size:16px}
+body{
+  margin:0;
+  font-family:var(--font-ui);
+  color:var(--text);
+  background:
+    radial-gradient(1100px 600px at 50% -8%, var(--bg-grad), transparent 70%),
+    var(--bg);
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  line-height:1.45;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+
+/* ---- Cabecera fija: marca + buscador + filtros SIEMPRE visibles ---- */
+.top{
+  position:sticky; top:0; z-index:20;
+  background:linear-gradient(180deg, var(--bg) 62%, rgba(20,22,27,.86));
+  backdrop-filter:saturate(140%) blur(10px);
+  border-bottom:1px solid var(--border);
+  padding:calc(env(safe-area-inset-top) + 12px) 16px 10px;
+}
+.top-inner{max-width:var(--maxw); margin:0 auto}
+
+.brand{display:flex; align-items:baseline; gap:9px; margin:0 2px 10px}
+.brand h1{
+  font-family:var(--font-brand);
+  font-size:1.12rem; font-weight:600; letter-spacing:.2px;
+  margin:0; color:var(--text);
+}
+.brand .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);align-self:center;
+  box-shadow:0 0 0 4px var(--accent-bg)}
+.brand .sub{margin-left:auto; font-size:.7rem; color:var(--text-faint); letter-spacing:.3px;
+  text-transform:uppercase; white-space:nowrap}
+
+/* ---- Buscador ---- */
+.search{position:relative}
+.search svg{position:absolute; left:15px; top:50%; transform:translateY(-50%);
+  width:19px;height:19px;stroke:var(--text-faint);pointer-events:none}
+#q{
+  width:100%; height:52px;
+  padding:0 46px 0 44px;
+  font-size:1.05rem; font-family:var(--font-ui); color:var(--text);
+  background:var(--surface); border:1.5px solid var(--border-2);
+  border-radius:var(--radius); outline:none;
+  transition:border-color .15s, box-shadow .15s;
+}
+#q::placeholder{color:var(--text-faint)}
+#q:focus{border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-bg)}
+.clear{
+  position:absolute; right:8px; top:50%; transform:translateY(-50%);
+  width:36px;height:36px; border:none; background:transparent; cursor:pointer;
+  color:var(--text-faint); font-size:1.3rem; line-height:1; border-radius:50%;
+  display:none; align-items:center; justify-content:center;
+}
+.clear:hover{color:var(--text); background:var(--surface-2)}
+.clear.show{display:flex}
+
+/* ---- Chips de filtro (fila con scroll horizontal en móvil) ---- */
+.chips{
+  display:flex; gap:8px; margin-top:10px; overflow-x:auto; padding-bottom:2px;
+  scrollbar-width:none; -ms-overflow-style:none;
+}
+.chips::-webkit-scrollbar{display:none}
+.chip{
+  flex:0 0 auto; min-height:38px; padding:0 13px;
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:.83rem; font-weight:500; white-space:nowrap;
+  color:var(--text-dim); background:var(--surface); cursor:pointer;
+  border:1px solid var(--border-2); border-radius:999px;
+  transition:background .14s,color .14s,border-color .14s;
+}
+.chip:hover{color:var(--text)}
+.chip[aria-pressed="true"]{
+  color:var(--text); background:var(--accent-bg); border-color:var(--accent-dim);
+}
+.chip[aria-pressed="true"] .tick{color:var(--accent)}
+.chip .tick{color:transparent; font-weight:700; margin-left:-2px}
+.chip.sep{flex:0 0 auto; width:1px; padding:0; background:var(--border); margin:6px 2px; border:none}
+.chip.reset{color:var(--text-faint); border-style:dashed}
+.chip.reset:hover{color:var(--out)}
+
+/* ===== Contenido ===== */
+main{max-width:var(--maxw); margin:0 auto; padding:14px 16px 40px}
+
+/* Barra de estado: fuente de datos + hora + recuento */
+.status{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  font-size:.74rem; color:var(--text-faint); margin:4px 2px 14px; min-height:18px;
+}
+.status .src{display:inline-flex; align-items:center; gap:6px}
+.status .led{width:7px;height:7px;border-radius:50%;background:var(--unk)}
+.status.live .led{background:var(--sin)}
+.status.local .led{background:var(--con)}
+.status .count{margin-left:auto; color:var(--text-dim)}
+.status .warn{color:var(--con)}
+
+/* ---- Leyenda compacta (plegable) ---- */
+.legend{margin:0 0 16px; border:1px solid var(--border); border-radius:var(--radius-sm);
+  background:var(--surface); overflow:hidden}
+.legend summary{
+  list-style:none; cursor:pointer; padding:10px 14px; min-height:var(--tap);
+  display:flex; align-items:center; gap:8px; font-size:.82rem; color:var(--text-dim);
+  user-select:none;
+}
+.legend summary::-webkit-details-marker{display:none}
+.legend summary .chev{margin-left:auto; transition:transform .2s; color:var(--text-faint)}
+.legend[open] summary .chev{transform:rotate(90deg)}
+.legend .body{padding:2px 14px 14px; display:flex; flex-wrap:wrap; gap:8px 16px;
+  border-top:1px solid var(--border)}
+.legend .item{display:inline-flex; align-items:center; gap:7px; font-size:.78rem; color:var(--text-dim)}
+
+/* ---- Secciones por clase (plegables) ---- */
+.class{margin-bottom:12px}
+/* Cabecera dividida: [chevron=plegar lista] [nombre=abrir ficha clínica] [contador] */
+.class-head{
+  display:flex; align-items:center; gap:2px;
+  border-bottom:1px solid var(--border);
+  font-family:var(--font-ui);
+}
+.ch-collapse, .ch-name{
+  min-height:var(--tap); cursor:pointer; background:none; border:none;
+  color:var(--text); font-family:inherit; display:flex; align-items:center;
+}
+.ch-collapse{gap:10px; padding:11px 6px 11px 4px; flex:0 0 auto}
+.ch-name{gap:8px; padding:11px 4px; flex:1 1 auto; text-align:left; min-width:0}
+.ch-collapse .chev{width:16px;height:16px;stroke:var(--text-faint);flex:0 0 auto;
+  transition:transform .2s}
+.class.collapsed .chev{transform:rotate(-90deg)}
+.ch-collapse .rank{
+  flex:0 0 auto; width:22px;height:22px; border-radius:6px;
+  display:grid; place-items:center; font-size:.72rem; font-weight:700;
+  color:var(--accent); background:var(--accent-bg); border:1px solid var(--accent-dim);
+}
+.ch-name .name{font-size:.96rem; font-weight:600; letter-spacing:.2px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+/* Indicador de que el nombre abre la ficha clínica */
+.ch-name .info-hint{flex:0 0 auto; display:inline-flex; align-items:center; gap:4px;
+  font-size:.68rem; font-weight:600; letter-spacing:.4px; text-transform:uppercase;
+  color:var(--accent); border:1px solid var(--accent-dim); background:var(--accent-bg);
+  border-radius:6px; padding:2px 6px; opacity:.72; transition:opacity .14s}
+.ch-name:hover .info-hint{opacity:1}
+.class.info-open .ch-name .info-hint{opacity:1}
+.class.info-open .ch-name .info-hint .i-tri{transform:rotate(90deg)}
+.info-hint .i-tri{transition:transform .2s; display:inline-block}
+.class-head .cnt{flex:0 0 auto; margin-left:auto; padding-right:6px;
+  font-size:.76rem; color:var(--text-faint); font-variant-numeric:tabular-nums}
+.class.collapsed .cards{display:none}
+
+/* ---- Ficha clínica del grupo (mecanismo / uso / efectos / CI / por fármaco) ---- */
+.ginfo{display:none; margin:10px 0 4px; padding:14px 15px;
+  background:var(--surface); border:1px solid var(--border);
+  border-left:3px solid var(--accent); border-radius:var(--radius-sm)}
+.class.info-open .ginfo{display:block}
+.ginfo .sec{margin-bottom:12px}
+.ginfo .sec:last-child{margin-bottom:0}
+.ginfo .sec-h{display:flex; align-items:center; gap:7px;
+  font-size:.72rem; text-transform:uppercase; letter-spacing:.6px; font-weight:700;
+  margin:0 0 5px}
+.ginfo .sec-h .gi{font-size:.8rem; line-height:1}
+.sec-mec .sec-h{color:var(--accent)}
+.sec-use .sec-h{color:var(--text-dim)}
+.sec-efx .sec-h{color:var(--con)}
+.sec-ci  .sec-h{color:var(--out)}
+.sec-esp .sec-h{color:var(--sin)}
+.ginfo ul{margin:2px 0 0; padding-left:17px}
+.ginfo li{font-size:.845rem; color:var(--text-dim); margin:3px 0; line-height:1.5}
+.ginfo li::marker{color:var(--text-faint)}
+.ginfo .subh{font-size:.68rem; font-weight:700; letter-spacing:.4px;
+  text-transform:uppercase; color:var(--text-faint); margin:8px 0 1px}
+.ginfo .subh:first-child{margin-top:0}
+.ginfo .gnote{margin:2px 0 0; font-size:.78rem; font-style:italic; color:var(--text-faint);
+  border-top:1px solid var(--border); padding-top:9px}
+
+.cards{display:grid; gap:10px; padding-top:11px}
+
+/* ---- Tarjeta de colirio ---- */
+.card{
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:13px 14px 12px;
+  transition:border-color .14s;
+}
+.card:hover{border-color:var(--border-2)}
+.card.out{opacity:.62}                 /* sin stock: atenuado, NUNCA oculto */
+.card.out:hover{opacity:.85}
+
+.card-top{display:flex; align-items:flex-start; gap:10px}
+.brandname{
+  font-family:var(--font-brand);
+  font-size:1.24rem; font-weight:600; letter-spacing:.2px; line-height:1.15;
+  color:var(--text); margin:0; flex:1 1 auto;
+}
+/* Principio activo = respuesta estrella. En acento, jerarquía clara. */
+.active{
+  margin:3px 0 0; font-size:.98rem; font-weight:600; color:var(--accent);
+  letter-spacing:.1px;
+}
+.klass{
+  display:inline-block; margin-top:7px; font-size:.68rem; letter-spacing:.6px;
+  text-transform:uppercase; color:var(--text-faint);
+  border:1px solid var(--border-2); border-radius:6px; padding:2px 7px;
+}
+.meta{margin-top:10px; font-size:.83rem; color:var(--text-dim); line-height:1.5}
+.meta b{color:var(--text-dim); font-weight:600}
+.meta .sep{color:var(--text-faint); margin:0 7px}
+
+.badges{display:flex; flex-wrap:wrap; gap:7px; margin-top:11px}
+.badge{
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:.76rem; font-weight:600; padding:4px 9px 4px 8px; border-radius:999px;
+  border:1px solid; letter-spacing:.1px;
+}
+.badge .ico{font-size:.82rem; line-height:1; font-weight:700} /* forma + texto (no solo color) */
+.b-sin  {color:var(--sin);  background:var(--sin-bg);  border-color:var(--sin-bd)}
+.b-con  {color:var(--con);  background:var(--con-bg);  border-color:var(--con-bd)}
+.b-ambos{color:var(--ambos);background:var(--ambos-bg);border-color:var(--ambos-bd)}
+.b-unk  {color:var(--unk);  background:var(--unk-bg);  border-color:var(--unk-bd)}
+.b-out  {color:var(--out);  background:var(--out-bg);  border-color:var(--out-bd)}
+
+/* Etiqueta de stock arriba-derecha */
+.stock-tag{flex:0 0 auto; font-size:.72rem; font-weight:600; padding:3px 9px;
+  border-radius:999px; border:1px solid; white-space:nowrap; margin-top:2px}
+.s-ok  {color:var(--sin); background:var(--sin-bg); border-color:var(--sin-bd)}
+.s-out {color:var(--out); background:var(--out-bg); border-color:var(--out-bd)}
+.s-unk {color:var(--unk); background:var(--unk-bg); border-color:var(--unk-bd)}
+
+mark{background:var(--accent-dim); color:var(--text); border-radius:3px; padding:0 1px}
+
+/* ---- Estados: skeleton / vacío / error ---- */
+.skeleton .sk{height:96px; border-radius:var(--radius); margin-bottom:10px;
+  background:linear-gradient(100deg, var(--surface) 30%, var(--surface-2) 50%, var(--surface) 70%);
+  background-size:220% 100%; animation:sh 1.3s ease-in-out infinite}
+.skeleton .sk:nth-child(2){height:78px}
+.skeleton .sk:nth-child(3){height:78px}
+@keyframes sh{0%{background-position:100% 0}100%{background-position:-100% 0}}
+@media (prefers-reduced-motion:reduce){.skeleton .sk{animation:none}}
+
+.empty{text-align:center; padding:48px 20px; color:var(--text-dim)}
+.empty svg{width:40px;height:40px;stroke:var(--border-2);margin-bottom:12px}
+.empty h2{font-size:1.02rem; font-weight:600; color:var(--text); margin:0 0 6px}
+.empty p{margin:0 0 16px; font-size:.88rem}
+.empty button{min-height:var(--tap); padding:0 18px; border-radius:var(--radius-sm);
+  background:var(--accent-bg); color:var(--accent); border:1px solid var(--accent-dim);
+  font-size:.86rem; font-weight:600; cursor:pointer}
+
+.errbox{border:1px solid var(--out-bd); background:var(--out-bg); color:var(--text);
+  border-radius:var(--radius); padding:16px; font-size:.88rem}
+.errbox b{color:var(--out)}
+
+/* ---- Pie ---- */
+footer{max-width:var(--maxw); margin:0 auto; padding:22px 18px 40px;
+  border-top:1px solid var(--border); color:var(--text-faint); font-size:.75rem;
+  line-height:1.6; text-align:center}
+
+/* ---- Tabla de impresión (oculta en pantalla) ---- */
+.printonly{display:none}
+
+/* ===========================================================================
+   IMPRESIÓN — tabla limpia en B/N para colgar en consulta
+   =========================================================================== */
+@media print{
+  :root{--maxw:100%}
+  body{background:#fff; color:#000; padding:0; font-size:11pt}
+  .top,.legend,.status,#results,.chips,footer .noprint{display:none !important}
+  main{padding:0}
+  .printonly{display:block; padding:12px}
+  .printonly h1{font-family:var(--font-brand); font-size:15pt; margin:0 0 2px}
+  .printonly .pmeta{font-size:9pt; color:#333; margin:0 0 12px}
+  table{width:100%; border-collapse:collapse; font-size:9.5pt}
+  th,td{border:1px solid #999; padding:4px 6px; text-align:left; vertical-align:top}
+  th{background:#eee; font-weight:700}
+  tbody tr{break-inside:avoid}
+  .pclass td{background:#e2e2e2; font-weight:700}
+  .pout td{color:#666}
+  .pout td:first-child::after{content:" · AGOTADO"; font-weight:700}
+  footer{border:none; text-align:left; padding:12px; color:#333; font-size:8.5pt}
+}
+</style>
+</head>
+<body>
+
+<!-- ======================= CABECERA FIJA ======================= -->
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>Colirios antiglaucomatosos</h1>
+      <span class="sub">Meixoeiro · CHUVI</span>
+    </div>
+
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+      <input id="q" type="search" inputmode="search" autocomplete="off" autocorrect="off"
+             spellcheck="false" enterkeyhint="search"
+             placeholder="Marca, principio activo o clase…" aria-label="Buscar colirio">
+      <button class="clear" id="clear" aria-label="Borrar búsqueda">×</button>
+    </div>
+
+    <!-- Chips de filtro combinables -->
+    <div class="chips" id="chips">
+      <button class="chip" data-filter="sin"  aria-pressed="false"><span class="tick">✓</span>Sin conservante</button>
+      <button class="chip" data-filter="disp" aria-pressed="false"><span class="tick">✓</span>Solo disponibles</button>
+      <span class="chip sep" aria-hidden="true"></span>
+      <!-- Chips por clase se inyectan aquí -->
+      <button class="chip reset" id="reset" hidden>Limpiar</button>
+    </div>
+  </div>
+</header>
+
+<!-- ======================= CONTENIDO ======================= -->
+<main>
+  <div class="status" id="status" aria-live="polite">
+    <span class="src"><span class="led"></span><span id="srcText">Cargando…</span></span>
+    <span class="count" id="countText"></span>
+  </div>
+
+  <!-- Leyenda compacta del código visual -->
+  <details class="legend">
+    <summary>Leyenda del código visual
+      <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg>
+    </summary>
+    <div class="body">
+      <span class="item"><span class="badge b-sin"><span class="ico">○</span>Sin</span> sin conservante</span>
+      <span class="item"><span class="badge b-con"><span class="ico">●</span>Con</span> con conservante</span>
+      <span class="item"><span class="badge b-ambos"><span class="ico">◑</span>Ambos</span> con y sin</span>
+      <span class="item"><span class="badge b-unk"><span class="ico">?</span>?</span> sin dato</span>
+      <span class="item"><span class="stock-tag s-out">Agotado</span> sin stock (atenuado)</span>
+    </div>
+  </details>
+
+  <!-- Resultados interactivos -->
+  <div id="results" aria-live="polite">
+    <div class="skeleton" aria-hidden="true"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
+  </div>
+
+  <!-- Tabla exclusiva de impresión -->
+  <section class="printonly" id="printArea"></section>
+</main>
+
+<footer>
+  <div class="noprint" style="margin-bottom:8px">
+    <span id="footStamp"></span>
+  </div>
+  Posología orientativa. No sustituye a la ficha técnica.
+  Disponibilidad actualizada manualmente.
+</footer>
+
+<script>
+"use strict";
+/* ===========================================================================
+   CONFIGURACIÓN
+   =========================================================================== */
+const CONFIG = {
+  // Google Sheet publicado como CSV (pestaña de colirios).
+  CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTfGWHxrzvywq1-jcJbln15MuQfq5xDS2TDwZbXav-ySt5wXPF_vEah28Nv12c_nKP3YG0m_r3CHDNo/pub?output=csv",
+  FETCH_TIMEOUT_MS: 6000,   // conexión de hospital: si tarda más, usamos copia local
+};
+
+/* Orden clínico FIJO de escalado (no alfabético). Una clase nueva no listada
+   va al final, nunca se descarta. */
+const ORDEN_CLASES = [
+  "Análogo de prostaglandina",
+  "Betabloqueante",
+  "Agonista alfa-2",
+  "Inhibidor anhidrasa carbónica",
+  "Miótico",
+  "Combinación (PG + timolol)",
+  "Combinación (otras, x2/día)",
+  "Combinación con ROCK",
+];
+
+/* Nombres cortos para los chips de clase (los largos no caben en móvil). */
+const CLASE_CHIP = {
+  "Análogo de prostaglandina":"Prostaglandina",
+  "Betabloqueante":"Betabloq.",
+  "Agonista alfa-2":"Alfa-2",
+  "Inhibidor anhidrasa carbónica":"IAC",
+  "Miótico":"Miótico",
+  "Combinación (PG + timolol)":"Comb. PG+tim.",
+  "Combinación (otras, x2/día)":"Comb. otras",
+  "Combinación con ROCK":"ROCK",
+};
+
+/* ---------------------------------------------------------------------------
+   FALLBACK OBLIGATORIO — copia local de los datos (espejo de la hoja).
+   Si el fetch falla (sin red / hoja despublicada), la web sigue funcionando
+   con esto y se avisa "datos locales". Mantener en sync al editar la hoja.
+   --------------------------------------------------------------------------- */
+const FALLBACK = [
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Latanoprost",comercial:"Monoprost",presentacion:"Unidosis (monodosis)",posologia:"1 gota 1×/día (noche)",conservante:"Sin"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Latanoprost",comercial:"Latanest",presentacion:"Multidosis",posologia:"1 gota 1×/día (noche)",conservante:"Sin"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Latanoprost",comercial:"Lifog",presentacion:"Multidosis (pistola, ~3 meses)",posologia:"1 gota 1×/día (noche)",conservante:"Sin"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Latanoprost",comercial:"Vizilatán",presentacion:"Unidosis",posologia:"1 gota 1×/día (noche)",conservante:"Sin"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Latanoprost",comercial:"Xiop",presentacion:"Unidosis",posologia:"1 gota 1×/día (noche)",conservante:"Sin"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Latanoprost",comercial:"Xalatan",presentacion:"Multidosis",posologia:"1 gota 1×/día (noche)",conservante:"Con"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Latanoprost",comercial:"Catiolanze",presentacion:"Unidosis (emulsión catiónica)",posologia:"1 gota 1×/día (noche)",conservante:"Sin"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Travoprost",comercial:"Vizitrav",presentacion:"Multidosis",posologia:"1 gota 1×/día (noche)",conservante:"Sin"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Travoprost",comercial:"Visutrax",presentacion:"Unidosis",posologia:"1 gota 1×/día (noche)",conservante:"Sin"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Travoprost",comercial:"Traglasín",presentacion:"Unidosis (financiado SS)",posologia:"1 gota 1×/día (noche)",conservante:"Sin"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Travoprost",comercial:"Travatán",presentacion:"Multidosis (Polyquad)",posologia:"1 gota 1×/día (noche)",conservante:"Con"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Travoprost",comercial:"Sinetrav",presentacion:"Multidosis",posologia:"1 gota 1×/día (noche)",conservante:"Con"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Bimatoprost",comercial:"Vizibim",presentacion:"Multidosis",posologia:"1 gota 1×/día (noche)",conservante:"Sin"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Bimatoprost",comercial:"Lumigan",presentacion:"Unidosis",posologia:"1 gota 1×/día (noche)",conservante:"Sin"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Bimatoprost",comercial:"Amiriox",presentacion:"Multidosis",posologia:"1 gota 1×/día (noche)",conservante:"Sin"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Bimatoprost",comercial:"Bimeox",presentacion:"Unidosis",posologia:"1 gota 1×/día (noche)",conservante:"Sin"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Bimatoprost",comercial:"Bimi",presentacion:"Multidosis",posologia:"1 gota 1×/día (noche)",conservante:"Sin"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Bimatoprost",comercial:"Visuplain",presentacion:"Multidosis",posologia:"1 gota 1×/día (noche)",conservante:"Con"},
+  {stock:"Sí",clase:"Análogo de prostaglandina",principio:"Tafluprost",comercial:"Saflután",presentacion:"Unidosis",posologia:"1 gota 1×/día (noche)",conservante:"Sin"},
+  {stock:"Sí",clase:"Betabloqueante",principio:"Timolol",comercial:"Timabak",presentacion:"Multidosis",posologia:"1 gota 1–2×/día",conservante:"Sin"},
+  {stock:"Sí",clase:"Betabloqueante",principio:"Timolol",comercial:"Timoftol",presentacion:"Multidosis",posologia:"1 gota 1–2×/día",conservante:"Con"},
+  {stock:"Sí",clase:"Betabloqueante",principio:"Timolol",comercial:"Cusimolol",presentacion:"Multidosis",posologia:"1 gota 1–2×/día",conservante:"Con"},
+  {stock:"Sí",clase:"Betabloqueante",principio:"Carteolol",comercial:"Arteoptic",presentacion:"Uni y multidosis",posologia:"1 gota 2×/día",conservante:"Ambos"},
+  {stock:"Sí",clase:"Betabloqueante",principio:"Carteolol",comercial:"Elebloc",presentacion:"Multidosis",posologia:"1 gota 2×/día",conservante:"Con"},
+  {stock:"Sí",clase:"Betabloqueante",principio:"Betaxolol",comercial:"Betoptic",presentacion:"Multidosis (β1-selectivo)",posologia:"1 gota 2×/día",conservante:"Con"},
+  {stock:"Sí",clase:"Agonista alfa-2",principio:"Brimonidina",comercial:"Brimvera",presentacion:"Unidosis",posologia:"1 gota 2–3×/día",conservante:"Sin"},
+  {stock:"Sí",clase:"Agonista alfa-2",principio:"Brimonidina",comercial:"Bripio",presentacion:"Unidosis",posologia:"1 gota 2–3×/día",conservante:"Sin"},
+  {stock:"Sí",clase:"Agonista alfa-2",principio:"Brimonidina",comercial:"Alphagan",presentacion:"Multidosis (conserv. suave)",posologia:"1 gota 2–3×/día",conservante:"Con"},
+  {stock:"Sí",clase:"Agonista alfa-2",principio:"Brimonidina",comercial:"Abradel",presentacion:"Multidosis",posologia:"1 gota 2–3×/día",conservante:"Con"},
+  {stock:"Sí",clase:"Agonista alfa-2",principio:"Apraclonidina",comercial:"Iopimax",presentacion:"Multidosis",posologia:"1 gota 3×/día (uso corto)",conservante:"Con"},
+  {stock:"Sí",clase:"Inhibidor anhidrasa carbónica",principio:"Dorzolamida",comercial:"Dimaz",presentacion:"Multidosis",posologia:"1 gota 2–3×/día",conservante:"Sin"},
+  {stock:"Sí",clase:"Inhibidor anhidrasa carbónica",principio:"Dorzolamida",comercial:"Trusopt",presentacion:"Multidosis",posologia:"1 gota 2–3×/día",conservante:"Con"},
+  {stock:"Sí",clase:"Inhibidor anhidrasa carbónica",principio:"Dorzolamida",comercial:"Arzolan",presentacion:"Multidosis",posologia:"1 gota 2–3×/día",conservante:"Con"},
+  {stock:"Sí",clase:"Inhibidor anhidrasa carbónica",principio:"Brinzolamida",comercial:"Azopt",presentacion:"Multidosis (suspensión)",posologia:"1 gota 2×/día",conservante:"Con"},
+  {stock:"Sí",clase:"Miótico",principio:"Pilocarpina",comercial:"Pilocarpina Colircusí",presentacion:"Multidosis",posologia:"1 gota 3–4×/día",conservante:"Con"},
+  {stock:"Sí",clase:"Combinación (PG + timolol)",principio:"Latanoprost + timolol",comercial:"Xalacom",presentacion:"Multidosis",posologia:"1 gota 1×/día",conservante:"Con"},
+  {stock:"No",clase:"Combinación (PG + timolol)",principio:"Latanoprost + timolol",comercial:"Fixaprost",presentacion:"Unidosis",posologia:"1 gota 1×/día",conservante:"Sin"},
+  {stock:"Sí",clase:"Combinación (PG + timolol)",principio:"Travoprost + timolol",comercial:"DuoTrav",presentacion:"Multidosis (Polyquad)",posologia:"1 gota 1×/día",conservante:"Con"},
+  {stock:"Sí",clase:"Combinación (PG + timolol)",principio:"Bimatoprost + timolol",comercial:"Ganfort",presentacion:"Uni y multidosis",posologia:"1 gota 1×/día",conservante:"Ambos"},
+  {stock:"Sí",clase:"Combinación (PG + timolol)",principio:"Bimatoprost + timolol",comercial:"Ecbirio",presentacion:"Multidosis",posologia:"1 gota 1×/día",conservante:"Sin"},
+  {stock:"Sí",clase:"Combinación (PG + timolol)",principio:"Bimatoprost + timolol",comercial:"Bapiri",presentacion:"Multidosis",posologia:"1 gota 1×/día",conservante:"Sin"},
+  {stock:"No",clase:"Combinación (PG + timolol)",principio:"Tafluprost + timolol",comercial:"Taptiqom",presentacion:"Unidosis",posologia:"1 gota 1×/día",conservante:"Sin"},
+  {stock:"No",clase:"Combinación (otras, x2/día)",principio:"Dorzolamida + timolol",comercial:"Cosdúo",presentacion:"Multidosis",posologia:"1 gota 2×/día",conservante:"Sin"},
+  {stock:"Sí",clase:"Combinación (otras, x2/día)",principio:"Dorzolamida + timolol",comercial:"Duokopt",presentacion:"Multidosis",posologia:"1 gota 2×/día",conservante:"Sin"},
+  {stock:"Sí",clase:"Combinación (otras, x2/día)",principio:"Dorzolamida + timolol",comercial:"Tidimaz",presentacion:"Multidosis",posologia:"1 gota 2×/día",conservante:"Sin"},
+  {stock:"Sí",clase:"Combinación (otras, x2/día)",principio:"Dorzolamida + timolol",comercial:"Cosopt",presentacion:"Uni y multidosis",posologia:"1 gota 2×/día",conservante:"Ambos"},
+  {stock:"Sí",clase:"Combinación (otras, x2/día)",principio:"Dorzolamida + timolol",comercial:"Visucopt",presentacion:"Unidosis",posologia:"1 gota 2×/día",conservante:"Sin"},
+  {stock:"Sí",clase:"Combinación (otras, x2/día)",principio:"Brinzolamida + timolol",comercial:"Azarga",presentacion:"Multidosis (suspensión)",posologia:"1 gota 2×/día",conservante:"Con"},
+  {stock:"Sí",clase:"Combinación (otras, x2/día)",principio:"Brimonidina + timolol",comercial:"Combigan",presentacion:"Multidosis",posologia:"1 gota 2×/día",conservante:"Con"},
+  {stock:"Sí",clase:"Combinación (otras, x2/día)",principio:"Brinzolamida + brimonidina",comercial:"Simbrinza",presentacion:"Multidosis (sin β-bloq.)",posologia:"1 gota 2–3×/día",conservante:"Con"},
+  {stock:"Sí",clase:"Combinación con ROCK",principio:"Latanoprost + netarsudil",comercial:"Roclanda",presentacion:"Multidosis (financiado SS)",posologia:"1 gota 1×/día (noche)",conservante:"Con"},
+];
+
+/* ---------------------------------------------------------------------------
+   FICHA CLÍNICA POR GRUPO — mecanismo, uso, efectos, contraindicaciones y
+   notas por fármaco. Fuente: notas propias del Servicio (Notion). Se muestra
+   al pulsar el nombre del grupo. Editable aquí; no depende de la hoja.
+   Claves = valores exactos de "Grupo / clase".
+   efectos: array simple, o {locales:[...], sistemicos:[...]}.
+   --------------------------------------------------------------------------- */
+const GROUP_INFO = {
+  "Análogo de prostaglandina": {
+    mecanismo: [
+      "Aumento de la salida por vía uveoescleral.",
+      "Ligero aumento de la vía trabecular.",
+      "Inicio de acción a las 4 h; efecto pico a las 8–12 h.",
+    ],
+    recomendaciones: [
+      "Primera línea: menos efectos secundarios sistémicos y mayor bajada de PIO (27–35%).",
+      "Si una no resulta eficaz, otro fármaco de la misma clase podría serlo.",
+      "Nunca mezclar dos PG: aumenta paradójicamente la PIO.",
+      "Si no funciona, suspender 1 mes (tiempo de lavado) y reevaluar (20% no respondedores).",
+    ],
+    pauta: ["1 vez al día, al acostarse (su pico es a las 8–12 h y el de la PIO por la mañana)."],
+    efectos: [
+      "Hiperemia conjuntival (la más frecuente; bimato > travo > latano).",
+      "Crecimiento, engrosamiento, hiperpigmentación y aumento del nº de pestañas (reversible en semanas).",
+      "Hiperpigmentación periocular (reversible en meses; bimato > travo > latano).",
+      "Hiperpigmentación del iris irreversible (más en ojos marrón verdoso, mínima en azules o marrón puro; por aumento de pigmento en los melanocitos, no de su número).",
+      "Atrofia periocular irreversible (bimato > travo > latano).",
+      "Aumento de EMC si se usa en el postoperatorio de cirugía de catarata.",
+      "Favorece la queratitis herpética (cuidado si antecedentes).",
+      "Aumenta la inflamación ocular (riesgo de uveítis anterior si inflamación ocular previa).",
+      "Cefalea ocasional, malestar general.",
+      "Aumento de migraña en individuos predispuestos.",
+    ],
+    contraindicaciones: [
+      "Antecedentes de edema macular cistoide / postop. de cirugía de cataratas (relativa).",
+      "Antecedentes de queratitis herpética, porque la favorece (relativa).",
+      "Inflamación ocular, riesgo de uveítis anterior (relativa).",
+    ],
+    especificos: [
+      "Latanoprost · Travoprost · Bimatoprost · Tafluprost.",
+      "Intensidad de efectos estéticos (hiperemia, pigmentación, atrofia): bimatoprost > travoprost > latanoprost.",
+    ],
+  },
+
+  "Betabloqueante": {
+    mecanismo: [
+      "Inhibe la producción de humor acuoso un 20–50% (de 2.5 a 1.9 µl de media), reduciendo la PIO 21–27% por bloqueo beta a nivel ciliar.",
+      "10% de taquifilaxia (aunque muchas veces la pérdida de eficacia es por avance de la enfermedad).",
+      "El efecto aumenta si se combina con un betabloqueante oral.",
+    ],
+    recomendaciones: [
+      "Efecto y efectos secundarios aumentan si se combina con uno sistémico.",
+      "Evitar por la noche: al dormir baja la TA (reduce la perfusión de la papila) y hay menos efecto (se produce menos humor acuoso).",
+      "Primera línea si solo hay que tratar un ojo (menos impacto estético) o hay contraindicación a PG (EMC, inflamación ocular, queratitis herpética).",
+      "De elección en neonatos (bajan rápido la PIO; en >2 años serían las PG).",
+      "Si no responde, suspender 1 mes y reevaluar (tiempo de lavado).",
+    ],
+    pauta: ["1×/día si carteolol (por la mañana) o 2×/día si timolol."],
+    efectos: {
+      locales: [
+        "Alergia, QPS (raros).",
+        "Uveítis anterior glaucomatosa (metipranolol).",
+      ],
+      sistemicos: [
+        "Importante ocluir el punto lagrimal para reducirlos.",
+        "Broncoespasmo (sobre todo si asma).",
+        "Bradicardia / bloqueo cardíaco.",
+        "Hipotensión (tomar el pulso antes de prescribir).",
+        "Empeoramiento de insuficiencia cardíaca.",
+        "Efecto vasoconstrictor periférico.",
+        "Alopecia (infrecuente pero irreversible).",
+        "Cansancio, mareo, disminución de la libido, intolerancia al ejercicio.",
+      ],
+    },
+    contraindicaciones: [
+      "Asma.",
+      "EPOC grave.",
+      "BAV de 2º o 3er grado.",
+      "Bradicardia (<60 lpm) / arritmias por bradicardia.",
+      "Miastenia gravis.",
+      "Hipotensión significativa.",
+      "Vasculopatía periférica (incluido fenómeno de Raynaud).",
+      "Deportista de élite: positivo en dopaje en algunos (tiro con arco…) y empeora el rendimiento en deportes físicos (atletismo…).",
+      "Cuidado en ancianos con alto riesgo de caídas (las aumenta).",
+    ],
+    especificos: [
+      "Timolol · Betaxolol · Levobunolol · Carteolol · Metipranolol.",
+      "Carteolol: 1×/día (mañana). Timolol: 2×/día.",
+      "Betaxolol: β1-selectivo (mejor perfil respiratorio).",
+      "Metipranolol: puede causar uveítis anterior glaucomatosa.",
+    ],
+  },
+
+  "Agonista alfa-2": {
+    mecanismo: [
+      "Inhibición de la producción de humor acuoso (aumenta la cAMP y vasoconstriñe los capilares ciliares).",
+      "Levemente aumenta la vía uveoescleral (relaja la musculatura).",
+      "Descienden la PIO 25–35% (apraclonidina) o 18–25% (brimonidina).",
+      "Posible efecto neuroprotector.",
+    ],
+    recomendaciones: [
+      "Farmacocinética: pico de acción a las 2 h (reducción 26% de PIO); a las 12 h ya casi sin efecto.",
+    ],
+    pauta: ["2 veces al día."],
+    efectos: [
+      "Queratoconjuntivitis / blefarodermatitis alérgica (hasta 18 meses tras el inicio); bastante frecuente (20% apraclonidina, 15% brimonidina con BK, 10% brimonidina sin BK).",
+      "Uveítis anterior granulomatosa (rara).",
+      "Xerostomía.",
+      "Fatiga / astenia (cuidado en muy mayores —atraviesa más la BHE— y en quienes manejan maquinaria o transportes).",
+    ],
+    contraindicaciones: [
+      "Niños <2 años / <20 kg (depresión del SNC e hipotensión por atravesar la BHE); cuidado en todo niño.",
+      "Tratamiento con antidepresivos IMAO / tricíclicos (riesgo de crisis hipertensiva).",
+      "Ancianos con alto riesgo de caídas.",
+    ],
+    especificos: [
+      "Brimonidina 0.2% · Apraclonidina 1%.",
+      "Apraclonidina baja más la PIO pero da más alergia; brimonidina 18–25%.",
+    ],
+  },
+
+  "Inhibidor anhidrasa carbónica": {
+    mecanismo: [
+      "Inhibe la secreción de humor acuoso (inhibe la anhidrasa carbónica del cuerpo ciliar; los orales además por acidosis).",
+      "Posible efecto neuroprotector.",
+      "Los tópicos descienden la PIO ~20%; los orales un 30–40%.",
+      "Si ya se usa un IAC oral, el tópico no añade efecto.",
+    ],
+    recomendaciones: [
+      "Inicio de acción — Oral: a la hora, pico a las 2–4 h. IV: a los 15 min.",
+    ],
+    pauta: ["3×/día en monoterapia; 2×/día si es complementario; 4×/día el oral."],
+    efectos: {
+      locales: [
+        "Descompensación corneal en pacientes con disfunción endotelial (EVITAR).",
+        "Blefaroconjuntivitis alérgica (dorzolamida > brinzolamida).",
+        "Sensación punzante transitoria (dorzolamida > brinzolamida).",
+        "Depósitos en la lágrima (sobre todo la brinzolamida).",
+      ],
+      sistemicos: [
+        "Mielotoxicidad idiosincrática.",
+        "Acidosis (la anhidrasa carbónica crea HCO3⁻).",
+        "Hipopotasemia.",
+        "Alcalosis de la orina.",
+      ],
+    },
+    contraindicaciones: [
+      "Alergia a sulfamidas.",
+      "Disfunción endotelial / bajo recuento endotelial / edema corneal (relativas si el beneficio supera el riesgo).",
+      "Drepanocitosis.",
+    ],
+    especificos: [
+      "Dorzolamida · Brinzolamida · Acetazolamida (oral).",
+      "Dorzolamida: más escozor y alergia. Brinzolamida (suspensión): más depósitos en la lágrima.",
+    ],
+  },
+
+  "Miótico": {
+    mecanismo: [
+      "Agonistas colinérgicos que abren el ángulo (útil frente al glaucoma de ángulo cerrado) y reducen la PIO por contracción del músculo ciliar, que aumenta el drenaje por la malla trabecular.",
+      "Reducen la PIO 20–25%.",
+    ],
+    pauta: ["4×/día el colirio; 1×/día el gel."],
+    efectos: {
+      locales: [
+        "Miosis.",
+        "Miopización.",
+        "Empeoramiento de los síntomas de catarata.",
+        "Dolor en la ceja.",
+      ],
+      sistemicos: [
+        "Raros: bradicardia, polaquiuria, síntomas gastrointestinales, confusión.",
+      ],
+    },
+    contraindicaciones: [
+      "Inflamación postoperatoria.",
+      "Uveítis.",
+      "Glaucoma neovascular.",
+      "Pacientes con riesgo de desprendimiento de retina.",
+      "Alteraciones gastrointestinales espásticas.",
+      "Úlcera péptica.",
+      "Bradicardia severa.",
+      "Hipotensión.",
+      "Infarto de miocardio reciente.",
+      "Epilepsia.",
+      "Parkinsonismo.",
+    ],
+    especificos: ["Pilocarpina · Carbacol."],
+  },
+
+  "Combinación con ROCK": {
+    mecanismo: [
+      "Aumento de la salida por vía trabecular (buena asociación).",
+      "Reducción de la presión venosa epiescleral.",
+      "En el combo comercializado se asocia a latanoprost (análogo de prostaglandina).",
+    ],
+    efectos: [
+      "Mucha hiperemia conjuntival.",
+      "Hiposfagma (hemorragia subconjuntival).",
+      "Córnea verticillata.",
+      "Queratitis.",
+      "Hipema (raro).",
+    ],
+    especificos: [
+      "Netarsudil (ripasudil en otros países).",
+      "Combo disponible: latanoprost + netarsudil (Roclanda).",
+    ],
+    nota: "Muchas complicaciones locales, por eso su uso es limitado. Añade también el perfil del análogo de prostaglandina que lo acompaña.",
+  },
+
+  "Combinación (PG + timolol)": {
+    mecanismo: [
+      "Asocia un análogo de prostaglandina (aumenta la salida uveoescleral) con timolol (reduce la producción de humor acuoso).",
+      "Doble mecanismo en un solo colirio, 1×/día.",
+    ],
+    pauta: ["1 gota 1×/día."],
+    efectos: [
+      "Hereda los de ambas clases: hiperemia y cambios perioculares/pestañas de la prostaglandina, y los sistémicos del betabloqueante (importante ocluir el punto lagrimal).",
+    ],
+    contraindicaciones: [
+      "Las del betabloqueante (asma, EPOC grave, bradicardia/BAV, insuficiencia cardíaca…).",
+      "Las relativas de la prostaglandina (EMC, queratitis herpética, inflamación ocular).",
+    ],
+    nota: "Combinación fija. Consulta las fichas de «Análogo de prostaglandina» y «Betabloqueante» para el detalle.",
+  },
+
+  "Combinación (otras, x2/día)": {
+    mecanismo: [
+      "Asocian un inhibidor de la anhidrasa carbónica, un agonista alfa-2 o brinzolamida + brimonidina, con o sin timolol.",
+      "Todas reducen la producción de humor acuoso.",
+    ],
+    pauta: ["1 gota 2×/día (Simbrinza 2–3×/día)."],
+    efectos: [
+      "Heredan los de sus componentes: alergia/escozor del IAC, alergia tardía del alfa-2 y, si llevan timolol, los sistémicos del betabloqueante.",
+    ],
+    contraindicaciones: [
+      "Las de sus componentes: alergia a sulfamidas (IAC); IMAO/tricíclicos y <2 años (alfa-2); y las del betabloqueante si lo contienen.",
+    ],
+    nota: "Combinación fija. Consulta las fichas de «Inhibidor anhidrasa carbónica», «Agonista alfa-2» y «Betabloqueante» según el caso.",
+  },
+};
+
+/* ===========================================================================
+   ESTADO EN MEMORIA (sin localStorage/sessionStorage)
+   =========================================================================== */
+const state = {
+  data: [],            // registros normalizados
+  filters: { sin:false, disp:false, clases:new Set() },
+  query: "",
+  collapsed: new Set(),// clases con la LISTA plegada manualmente
+  infoOpen: new Set(), // clases con la FICHA clínica abierta
+  source: "loading",   // loading | live | local | error
+};
+
+/* ===========================================================================
+   UTILIDADES
+   =========================================================================== */
+// Normaliza: minúsculas + sin acentos/diacríticos. "Vizitrán" -> "vizitran".
+const norm = s => (s||"").toString().toLowerCase()
+  .normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+
+const esc = s => (s||"").toString()
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+  .replace(/"/g,"&quot;");
+
+// Distancia de edición acotada a 1 (para tolerar una errata). Devuelve true si ≤1.
+function within1(a,b){
+  if(a===b) return true;
+  const la=a.length, lb=b.length;
+  if(Math.abs(la-lb)>1) return false;
+  let i=0,j=0,edits=0;
+  while(i<la && j<lb){
+    if(a[i]===b[j]){i++;j++;continue;}
+    if(++edits>1) return false;
+    if(la>lb) i++;            // borrar de a
+    else if(lb>la) j++;       // insertar en a
+    else {i++;j++;}           // sustituir
+  }
+  if(i<la||j<lb) edits++;
+  return edits<=1;
+}
+
+// Clasifica un valor de conservante en categoría robusta (vacío/raro -> unk).
+function consKind(v){
+  const n = norm(v);
+  if(n==="sin") return "sin";
+  if(n==="con") return "con";
+  if(n==="ambos") return "ambos";
+  return "unk";                 // desconocido: gris, nunca "sin conservante"
+}
+// Clasifica stock (vacío/raro -> unk; nunca se asume disponible).
+function stockKind(v){
+  const n = norm(v);
+  if(n==="si") return "ok";
+  if(n==="no") return "out";
+  return "unk";
+}
+
+// Índice de una clase en el orden fijo; las desconocidas van al final.
+function claseRank(c){
+  const i = ORDEN_CLASES.indexOf(c);
+  return i===-1 ? ORDEN_CLASES.length + 1 : i;
+}
+
+/* ===========================================================================
+   CARGA DE DATOS: fetch CSV (anticaché) con timeout -> fallback local
+   =========================================================================== */
+function normalizeRow(r){
+  // Acepta claves del CSV (cabeceras exactas) o del fallback (claves cortas).
+  const g = (...keys) => { for(const k of keys){ if(r[k]!=null && r[k]!=="") return r[k]; } return ""; };
+  return {
+    stock:       g("Stock","stock"),
+    clase:       g("Grupo / clase","clase"),
+    principio:   g("Principio activo","principio"),
+    comercial:   g("Nombre comercial (España)","comercial"),
+    presentacion:g("Presentación","presentacion"),
+    posologia:   g("Posología orientativa","posologia"),
+    conservante: g("Conservante","conservante"),
+  };
+}
+
+function prepare(rows){
+  return rows
+    .map(normalizeRow)
+    .filter(r => (r.comercial||"").trim() !== "")   // descarta filas vacías
+    .map(r => {
+      const hay = norm([r.comercial, r.principio, r.clase].join(" "));
+      return {
+        ...r,
+        _cons: consKind(r.conservante),
+        _stock: stockKind(r.stock),
+        _rank: claseRank(r.clase),
+        _hay: hay,                       // texto normalizado para substring
+        _tokens: hay.split(/\s+/).filter(Boolean), // tokens para tolerar erratas
+      };
+    })
+    // Orden estable: clase (orden clínico) -> principio -> comercial
+    .sort((a,b) =>
+      a._rank - b._rank ||
+      a.principio.localeCompare(b.principio,"es") ||
+      a.comercial.localeCompare(b.comercial,"es"));
+}
+
+async function loadData(){
+  try{
+    const ctrl = new AbortController();
+    const to = setTimeout(()=>ctrl.abort(), CONFIG.FETCH_TIMEOUT_MS);
+    // Parámetro anticaché para ver cambios de la hoja al instante.
+    const url = CONFIG.CSV_URL + (CONFIG.CSV_URL.includes("?")?"&":"?") + "t=" + Date.now();
+    const res = await fetch(url, {signal:ctrl.signal, cache:"no-store"});
+    clearTimeout(to);
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const text = await res.text();
+
+    const parsed = Papa.parse(text, {header:true, skipEmptyLines:"greedy"});
+    const rows = prepare(parsed.data);
+    if(rows.length === 0) throw new Error("CSV vacío o sin filas válidas");
+
+    state.data = rows;
+    state.source = "live";
+  }catch(err){
+    // Fallback obligatorio: la web sigue funcionando con la copia local.
+    console.warn("Fetch CSV falló, usando datos locales:", err && err.message);
+    state.data = prepare(FALLBACK);
+    state.source = state.data.length ? "local" : "error";
+  }
+  render();
+  updateStatus();
+}
+
+/* ===========================================================================
+   FILTRADO
+   =========================================================================== */
+function matchesQuery(item, nq){
+  if(!nq) return true;
+  if(item._hay.includes(nq)) return true;
+  // Tolerancia a 1 errata (solo con consultas de ≥4 chars, por token).
+  if(nq.length >= 4){
+    for(const tok of item._tokens){ if(within1(tok, nq)) return true; }
+  }
+  return false;
+}
+
+function applyFilters(){
+  const nq = norm(state.query);
+  const f = state.filters;
+  return state.data.filter(it => {
+    if(f.sin && it._cons !== "sin") return false;
+    if(f.disp && it._stock !== "ok") return false;
+    if(f.clases.size && !f.clases.has(it.clase)) return false;
+    return matchesQuery(it, nq);
+  });
+}
+
+/* ===========================================================================
+   RENDER
+   =========================================================================== */
+const $ = sel => document.querySelector(sel);
+const resultsEl = $("#results");
+
+// Resalta la coincidencia de texto (respetando acentos originales).
+function highlight(text, nq){
+  if(!nq) return esc(text);
+  const nText = norm(text);
+  const idx = nText.indexOf(nq);
+  if(idx === -1) return esc(text);
+  return esc(text.slice(0,idx)) + "<mark>" +
+         esc(text.slice(idx, idx+nq.length)) + "</mark>" +
+         esc(text.slice(idx+nq.length));
+}
+
+const CONS_LABEL = {
+  sin:  {cls:"b-sin",  ico:"○", txt:"Sin conservante"},
+  con:  {cls:"b-con",  ico:"●", txt:"Con conservante"},
+  ambos:{cls:"b-ambos",ico:"◑", txt:"Con y sin"},
+  unk:  {cls:"b-unk",  ico:"?", txt:"Conservante ?"},
+};
+const STOCK_LABEL = {
+  ok:  {cls:"s-ok",  txt:"Disponible"},
+  out: {cls:"s-out", txt:"Agotado"},
+  unk: {cls:"s-unk", txt:"Stock ?"},
+};
+
+// Construye la ficha clínica del grupo a partir de GROUP_INFO.
+function groupInfoHTML(clase){
+  const g = GROUP_INFO[clase];
+  if(!g) return "";
+  const list = arr => "<ul>" + arr.map(x => `<li>${esc(x)}</li>`).join("") + "</ul>";
+  let h = "";
+
+  if(g.mecanismo)
+    h += `<div class="sec sec-mec"><div class="sec-h"><span class="gi">◆</span>Mecanismo</div>${list(g.mecanismo)}</div>`;
+
+  if(g.pauta || g.recomendaciones){
+    let u = "";
+    if(g.pauta)          u += `<div class="subh">Pauta</div>${list(g.pauta)}`;
+    if(g.recomendaciones) u += `<div class="subh">Recomendaciones</div>${list(g.recomendaciones)}`;
+    h += `<div class="sec sec-use"><div class="sec-h"><span class="gi">◷</span>Uso</div>${u}</div>`;
+  }
+
+  if(g.efectos){
+    let e = "";
+    if(Array.isArray(g.efectos)){
+      e = list(g.efectos);
+    }else{
+      if(g.efectos.locales)    e += `<div class="subh">Locales</div>${list(g.efectos.locales)}`;
+      if(g.efectos.sistemicos) e += `<div class="subh">Sistémicos</div>${list(g.efectos.sistemicos)}`;
+    }
+    h += `<div class="sec sec-efx"><div class="sec-h"><span class="gi">●</span>Efectos secundarios</div>${e}</div>`;
+  }
+
+  if(g.contraindicaciones)
+    h += `<div class="sec sec-ci"><div class="sec-h"><span class="gi">▲</span>Contraindicaciones</div>${list(g.contraindicaciones)}</div>`;
+
+  if(g.especificos)
+    h += `<div class="sec sec-esp"><div class="sec-h"><span class="gi">◇</span>Notas por fármaco</div>${list(g.especificos)}</div>`;
+
+  if(g.nota)
+    h += `<p class="gnote">${esc(g.nota)}</p>`;
+
+  return h;
+}
+
+function cardHTML(it, nq){
+  const c = CONS_LABEL[it._cons];
+  const s = STOCK_LABEL[it._stock];
+  const parts = [];
+  if(it.presentacion) parts.push("<b>Presentación:</b> " + esc(it.presentacion));
+  if(it.posologia)    parts.push("<b>Posología:</b> " + esc(it.posologia));
+  const meta = parts.join('<span class="sep">·</span>');
+
+  return `
+  <article class="card ${it._stock==='out'?'out':''}">
+    <div class="card-top">
+      <div style="flex:1 1 auto; min-width:0">
+        <h3 class="brandname">${highlight(it.comercial, nq)}</h3>
+        <p class="active">${highlight(it.principio, nq)}</p>
+      </div>
+      <span class="stock-tag ${s.cls}">${s.txt}</span>
+    </div>
+    <span class="klass">${highlight(it.clase, nq)}</span>
+    ${meta ? `<div class="meta">${meta}</div>` : ""}
+    <div class="badges">
+      <span class="badge ${c.cls}"><span class="ico">${c.ico}</span>${c.txt}</span>
+    </div>
+  </article>`;
+}
+
+function render(){
+  const nq = norm(state.query);
+  const rows = applyFilters();
+  buildClaseChips();               // asegura chips de clase presentes
+  renderPrint(rows);               // tabla de impresión siempre en sync
+
+  // Sin resultados
+  if(rows.length === 0){
+    resultsEl.innerHTML = `
+    <div class="empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+      <h2>Sin resultados</h2>
+      <p>Ningún colirio coincide con la búsqueda o los filtros activos.</p>
+      <button type="button" id="empReset">Limpiar búsqueda y filtros</button>
+    </div>`;
+    $("#empReset").onclick = resetAll;
+    updateCount(0);
+    return;
+  }
+
+  // Agrupar por clase respetando el orden fijo
+  const groups = new Map();
+  for(const it of rows){
+    if(!groups.has(it.clase)) groups.set(it.clase, []);
+    groups.get(it.clase).push(it);
+  }
+  const orderedClasses = [...groups.keys()].sort(
+    (a,b) => claseRank(a)-claseRank(b) || a.localeCompare(b,"es"));
+
+  // Al buscar, expandimos todo para no esconder coincidencias.
+  const forceOpen = nq.length > 0;
+
+  let html = "";
+  orderedClasses.forEach(clase => {
+    const items = groups.get(clase);
+    const rank = claseRank(clase);
+    const rankTxt = rank < ORDEN_CLASES.length ? (rank+1) : "+";
+    const collapsed = !forceOpen && state.collapsed.has(clase);
+    const infoOpen = state.infoOpen.has(clase);
+    const hasInfo = !!GROUP_INFO[clase];
+    const safeId = "info-" + claseRank(clase) + "-" + esc(clase).replace(/[^a-z0-9]/gi,"");
+    html += `
+    <section class="class ${collapsed?'collapsed':''} ${infoOpen?'info-open':''}" data-clase="${esc(clase)}">
+      <div class="class-head">
+        <button class="ch-collapse" type="button" aria-label="Plegar o desplegar la lista de ${esc(clase)}" aria-expanded="${!collapsed}">
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+          <span class="rank">${rankTxt}</span>
+        </button>
+        <button class="ch-name" type="button" ${hasInfo?`aria-expanded="${infoOpen}" aria-controls="${safeId}"`:"disabled"}>
+          <span class="name">${esc(clase)}</span>
+          ${hasInfo?`<span class="info-hint"><span class="i-tri">▸</span>Ficha</span>`:""}
+        </button>
+        <span class="cnt">${items.length}</span>
+      </div>
+      ${hasInfo?`<div class="ginfo" id="${safeId}" role="region" aria-label="Ficha clínica de ${esc(clase)}">${groupInfoHTML(clase)}</div>`:""}
+      <div class="cards">
+        ${items.map(it => cardHTML(it, nq)).join("")}
+      </div>
+    </section>`;
+  });
+  resultsEl.innerHTML = html;
+
+  // El chevron/rango pliega o despliega la LISTA de fármacos.
+  resultsEl.querySelectorAll(".ch-collapse").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const sec = btn.closest(".class");
+      const clase = sec.dataset.clase;
+      if(state.collapsed.has(clase)) state.collapsed.delete(clase);
+      else state.collapsed.add(clase);
+      sec.classList.toggle("collapsed");
+      btn.setAttribute("aria-expanded", String(!sec.classList.contains("collapsed")));
+    });
+  });
+
+  // El NOMBRE del grupo abre o cierra la FICHA clínica.
+  resultsEl.querySelectorAll(".ch-name").forEach(btn => {
+    if(btn.disabled) return;
+    btn.addEventListener("click", () => {
+      const sec = btn.closest(".class");
+      const clase = sec.dataset.clase;
+      if(state.infoOpen.has(clase)) state.infoOpen.delete(clase);
+      else state.infoOpen.add(clase);
+      const open = sec.classList.toggle("info-open");
+      btn.setAttribute("aria-expanded", String(open));
+    });
+  });
+
+  updateCount(rows.length);
+}
+
+// Recuento en la barra de estado
+function updateCount(n){
+  const total = state.data.length;
+  $("#countText").textContent = n === total
+    ? `${total} colirios`
+    : `${n} de ${total}`;
+}
+
+/* ---- Tabla de impresión (B/N, limpia) ---- */
+function renderPrint(rows){
+  const area = $("#printArea");
+  const stamp = new Date().toLocaleString("es-ES",{dateStyle:"medium",timeStyle:"short"});
+  let body = "";
+  let lastClase = null;
+  for(const it of rows){
+    if(it.clase !== lastClase){
+      body += `<tr class="pclass"><td colspan="6">${esc(it.clase)}</td></tr>`;
+      lastClase = it.clase;
+    }
+    const cons = CONS_LABEL[it._cons].txt;
+    body += `<tr class="${it._stock==='out'?'pout':''}">
+      <td>${esc(it.comercial)}</td>
+      <td>${esc(it.principio)}</td>
+      <td>${esc(it.presentacion)}</td>
+      <td>${esc(it.posologia)}</td>
+      <td>${cons}</td>
+      <td>${STOCK_LABEL[it._stock].txt}</td>
+    </tr>`;
+  }
+  area.innerHTML = `
+    <h1>Colirios antiglaucomatosos — Meixoeiro (CHUVI)</h1>
+    <p class="pmeta">Impreso ${esc(stamp)} · ${rows.length} colirios · Posología orientativa, no sustituye a la ficha técnica.</p>
+    <table>
+      <thead><tr>
+        <th>Nombre comercial</th><th>Principio activo</th><th>Presentación</th>
+        <th>Posología</th><th>Conservante</th><th>Stock</th>
+      </tr></thead>
+      <tbody>${body || '<tr><td colspan="6">Sin resultados con los filtros actuales.</td></tr>'}</tbody>
+    </table>`;
+}
+
+/* ---- Barra de estado: fuente + hora de última carga ---- */
+function updateStatus(){
+  const el = $("#status");
+  el.classList.remove("live","local");
+  const stamp = new Date().toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"});
+  if(state.source === "live"){
+    el.classList.add("live");
+    $("#srcText").innerHTML = `Datos en vivo · <span style="color:var(--text-dim)">${stamp}</span>`;
+    $("#footStamp").textContent = "Datos en vivo de la hoja. Última carga: " + stamp + ".";
+  }else if(state.source === "local"){
+    el.classList.add("local");
+    $("#srcText").innerHTML = `<span class="warn">Datos locales</span> · puede que no estén actualizados · ${stamp}`;
+    $("#footStamp").textContent = "Sin conexión con la hoja: mostrando copia local. Última carga: " + stamp + ".";
+  }else{
+    $("#srcText").textContent = "Error de datos";
+  }
+}
+
+/* ===========================================================================
+   CHIPS DE FILTRO
+   =========================================================================== */
+let claseChipsBuilt = false;
+function buildClaseChips(){
+  if(claseChipsBuilt) return;
+  // Clases presentes en los datos, en orden fijo (+ nuevas al final).
+  const present = [...new Set(state.data.map(d=>d.clase))]
+    .sort((a,b)=>claseRank(a)-claseRank(b)||a.localeCompare(b,"es"));
+  const resetBtn = $("#reset");
+  const frag = document.createDocumentFragment();
+  present.forEach(clase => {
+    const b = document.createElement("button");
+    b.className = "chip"; b.dataset.clase = clase;
+    b.setAttribute("aria-pressed","false");
+    b.innerHTML = `<span class="tick">✓</span>${esc(CLASE_CHIP[clase]||clase)}`;
+    b.addEventListener("click", () => {
+      if(state.filters.clases.has(clase)) state.filters.clases.delete(clase);
+      else state.filters.clases.add(clase);
+      b.setAttribute("aria-pressed", String(state.filters.clases.has(clase)));
+      afterFilterChange();
+    });
+    frag.appendChild(b);
+  });
+  $("#chips").insertBefore(frag, resetBtn);
+  claseChipsBuilt = true;
+}
+
+// Muestra/oculta el chip "Limpiar" según haya algo activo
+function refreshResetChip(){
+  const active = state.query || state.filters.sin || state.filters.disp || state.filters.clases.size;
+  $("#reset").hidden = !active;
+}
+
+function afterFilterChange(){ refreshResetChip(); render(); }
+
+function resetAll(){
+  state.query = "";
+  state.filters.sin = false;
+  state.filters.disp = false;
+  state.filters.clases.clear();
+  $("#q").value = "";
+  $("#clear").classList.remove("show");
+  document.querySelectorAll('.chip[aria-pressed]').forEach(c=>c.setAttribute("aria-pressed","false"));
+  afterFilterChange();
+}
+
+/* ===========================================================================
+   EVENTOS
+   =========================================================================== */
+function initEvents(){
+  const q = $("#q"), clear = $("#clear");
+
+  q.addEventListener("input", () => {
+    state.query = q.value;
+    clear.classList.toggle("show", q.value.length>0);
+    refreshResetChip();
+    render();
+  });
+  clear.addEventListener("click", () => {
+    q.value=""; state.query=""; clear.classList.remove("show");
+    q.focus(); refreshResetChip(); render();
+  });
+  // Esc limpia la búsqueda
+  q.addEventListener("keydown", e => { if(e.key==="Escape"){ q.value=""; state.query=""; clear.classList.remove("show"); refreshResetChip(); render(); }});
+
+  // Chips de toggle (sin conservante / solo disponibles)
+  document.querySelectorAll('.chip[data-filter]').forEach(chip => {
+    chip.addEventListener("click", () => {
+      const key = chip.dataset.filter==="sin" ? "sin" : "disp";
+      state.filters[key] = !state.filters[key];
+      chip.setAttribute("aria-pressed", String(state.filters[key]));
+      afterFilterChange();
+    });
+  });
+
+  $("#reset").addEventListener("click", resetAll);
+}
+
+/* ===========================================================================
+   ARRANQUE
+   =========================================================================== */
+window.addEventListener("DOMContentLoaded", () => {
+  initEvents();
+  // Autofoco (sin abrir teclado de golpe en iOS: solo si no es táctil pequeño).
+  const q = $("#q");
+  if(!window.matchMedia("(max-width: 640px)").matches){ q.focus(); }
+  // PapaParse llega con defer; si aún no está, esperamos al load.
+  if(window.Papa) loadData();
+  else window.addEventListener("load", loadData, {once:true});
+});
+</script>
+</body>
+</html>
