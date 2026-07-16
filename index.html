@@ -289,6 +289,10 @@ main{max-width:var(--maxw); margin:0 auto; padding:14px 16px 40px}
 .note{display:flex; gap:6px; margin-top:9px; font-size:.75rem; line-height:1.45;
   color:var(--text-dim)}
 .note .nico{color:var(--con); flex:0 0 auto; font-size:.8rem; line-height:1.35}
+/* Nota destacada: caja ámbar para que salte a la vista */
+.note-hl{background:var(--con-bg); border:1px solid var(--con-bd); border-radius:9px;
+  padding:7px 10px; color:var(--text); font-weight:600}
+.note-hl .nico{color:var(--con)}
 
 mark{background:var(--accent-dim); color:var(--text); border-radius:3px; padding:0 1px}
 
@@ -842,6 +846,7 @@ function prepare(rows){
         _stock: stockKind(r.stock),
         _fin: NO_FINANCIADO[r.comercial] || "si",   // financiación SS (excepciones)
         _nota: NOTAS[r.comercial] || "",             // anotación en letra pequeña
+        _notaHl: NOTAS_DESTACADAS.has(r.comercial),  // ¿nota destacada?
         _rank: claseRank(r.clase),
         _hay: hay,                       // texto normalizado para substring
         _tokens: hay.split(/\s+/).filter(Boolean), // tokens para tolerar erratas
@@ -930,8 +935,15 @@ function highlight(text, nq){
 // Nota en letra pequeña bajo la tarjeta (p. ej. disponibilidad según la dosis).
 const NOTAS = {
   "Catiolanze": "No disponible el envase de 90; sí el de 30.",
+  "Visiotan":   "Solo disponible el envase de 60.",
   "Ganfort":    "La multidosis no está financiada por la SS; la unidosis sí.",
 };
+
+// Notas que se muestran DESTACADAS (caja ámbar). Clave = nombre comercial exacto.
+const NOTAS_DESTACADAS = new Set([
+  "Catiolanze",
+  "Visiotan",
+]);
 
 // Financiación por la Seguridad Social. Por defecto TODO se considera financiado;
 // aquí solo se listan las excepciones. "no" = no financiado · "parcial" = depende
@@ -1024,7 +1036,7 @@ function cardHTML(it, nq){
       <span class="badge ${c.cls}"><span class="ico">${c.ico}</span>${c.txt}</span>
       <span class="fin ${f.cls}"><span class="ico">${f.ico}</span>${f.txt}</span>
     </div>
-    ${it._nota ? `<p class="note"><span class="nico">✎</span><span>${esc(it._nota)}</span></p>` : ""}
+    ${it._nota ? `<p class="note ${it._notaHl?'note-hl':''}"><span class="nico">${it._notaHl?'⚑':'✎'}</span><span>${esc(it._nota)}</span></p>` : ""}
   </article>`;
 }
 
