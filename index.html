@@ -276,6 +276,20 @@ main{max-width:var(--maxw); margin:0 auto; padding:14px 16px 40px}
 .s-out {color:var(--out); background:var(--out-bg); border-color:var(--out-bd)}
 .s-unk {color:var(--unk); background:var(--unk-bg); border-color:var(--unk-bd)}
 
+/* Etiqueta de financiación SS. "Financiado" es discreta (lo normal); las
+   excepciones (no/parcial financiado) resaltan en ámbar para captar la vista. */
+.fin{display:inline-flex; align-items:center; gap:5px; font-size:.72rem; font-weight:600;
+  padding:3px 9px 3px 8px; border-radius:999px; border:1px solid; letter-spacing:.1px}
+.fin .ico{font-size:.78rem; line-height:1}
+.f-si{color:var(--text-faint); background:transparent; border-color:var(--border-2)}
+/* Contorno (sin relleno) para no confundirse con el badge ámbar "Con conservante" */
+.f-no{color:var(--con); background:transparent; border-color:var(--con); border-style:dashed}
+
+/* Anotación en letra pequeña bajo la tarjeta (p. ej. disponibilidad por dosis) */
+.note{display:flex; gap:6px; margin-top:9px; font-size:.75rem; line-height:1.45;
+  color:var(--text-dim)}
+.note .nico{color:var(--con); flex:0 0 auto; font-size:.8rem; line-height:1.35}
+
 mark{background:var(--accent-dim); color:var(--text); border-radius:3px; padding:0 1px}
 
 /* ---- Estados: skeleton / vacío / error ---- */
@@ -377,6 +391,9 @@ footer{max-width:var(--maxw); margin:0 auto; padding:22px 18px 40px;
       <span class="item"><span class="badge b-ambos"><span class="ico">◑</span>Ambos</span> con y sin</span>
       <span class="item"><span class="badge b-unk"><span class="ico">?</span>?</span> sin dato</span>
       <span class="item"><span class="stock-tag s-out">Agotado</span> sin stock (atenuado)</span>
+      <span class="item"><span class="fin f-si"><span class="ico">✓</span>Financiado SS</span> lo cubre la Seguridad Social</span>
+      <span class="item"><span class="fin f-no"><span class="ico">€</span>No financiado SS</span> lo paga el paciente</span>
+      <span class="item"><span class="nico" style="color:var(--con)">✎</span> nota (p. ej. disponibilidad según la dosis)</span>
     </div>
   </details>
 
@@ -823,6 +840,8 @@ function prepare(rows){
         ...r,
         _cons: consKind(r.conservante),
         _stock: stockKind(r.stock),
+        _fin: NO_FINANCIADO[r.comercial] || "si",   // financiación SS (excepciones)
+        _nota: NOTAS[r.comercial] || "",             // anotación en letra pequeña
         _rank: claseRank(r.clase),
         _hay: hay,                       // texto normalizado para substring
         _tokens: hay.split(/\s+/).filter(Boolean), // tokens para tolerar erratas
@@ -903,11 +922,37 @@ function highlight(text, nq){
          esc(text.slice(idx+nq.length));
 }
 
+/* ---------------------------------------------------------------------------
+   ANOTACIONES POR PRODUCTO (se mantienen a mano aquí, no vienen de la hoja).
+   Clave = nombre comercial EXACTO tal como aparece en la hoja.
+   --------------------------------------------------------------------------- */
+
+// Nota en letra pequeña bajo la tarjeta (p. ej. disponibilidad según la dosis).
+const NOTAS = {
+  "Catiolanze": "No disponible el envase de 90; sí el de 30.",
+  "Ganfort":    "La multidosis no está financiada por la SS; la unidosis sí.",
+};
+
+// Financiación por la Seguridad Social. Por defecto TODO se considera financiado;
+// aquí solo se listan las excepciones. "no" = no financiado · "parcial" = depende
+// de la presentación (se explica en NOTAS).
+const NO_FINANCIADO = {
+  "Timoftol":       "no",
+  "Timabak":        "no",
+  "Ganfort":        "parcial",   // solo la presentación multidosis
+};
+
 const CONS_LABEL = {
   sin:  {cls:"b-sin",  ico:"○", txt:"Sin conservante"},
   con:  {cls:"b-con",  ico:"●", txt:"Con conservante"},
   ambos:{cls:"b-ambos",ico:"◑", txt:"Con y sin"},
   unk:  {cls:"b-unk",  ico:"?", txt:"Conservante ?"},
+};
+// Etiqueta de financiación. "si" es discreta; "no"/"parcial" resaltan.
+const FIN_LABEL = {
+  si:      {cls:"f-si", ico:"✓", txt:"Financiado SS"},
+  no:      {cls:"f-no", ico:"€", txt:"No financiado SS"},
+  parcial: {cls:"f-no", ico:"€", txt:"Financiación parcial"},
 };
 const STOCK_LABEL = {
   ok:  {cls:"s-ok",  txt:"Disponible"},
@@ -958,6 +1003,7 @@ function groupInfoHTML(clase){
 function cardHTML(it, nq){
   const c = CONS_LABEL[it._cons];
   const s = STOCK_LABEL[it._stock];
+  const f = FIN_LABEL[it._fin] || FIN_LABEL.si;
   const parts = [];
   if(it.presentacion) parts.push("<b>Presentación:</b> " + esc(it.presentacion));
   if(it.posologia)    parts.push("<b>Posología:</b> " + esc(it.posologia));
@@ -976,7 +1022,9 @@ function cardHTML(it, nq){
     ${meta ? `<div class="meta">${meta}</div>` : ""}
     <div class="badges">
       <span class="badge ${c.cls}"><span class="ico">${c.ico}</span>${c.txt}</span>
+      <span class="fin ${f.cls}"><span class="ico">${f.ico}</span>${f.txt}</span>
     </div>
+    ${it._nota ? `<p class="note"><span class="nico">✎</span><span>${esc(it._nota)}</span></p>` : ""}
   </article>`;
 }
 
@@ -1084,19 +1132,22 @@ function renderPrint(rows){
   const stamp = new Date().toLocaleString("es-ES",{dateStyle:"medium",timeStyle:"short"});
   let body = "";
   let lastClase = null;
+  const finTxt = {si:"Sí", no:"No", parcial:"Parcial"};
   for(const it of rows){
     if(it.clase !== lastClase){
-      body += `<tr class="pclass"><td colspan="6">${esc(it.clase)}</td></tr>`;
+      body += `<tr class="pclass"><td colspan="7">${esc(it.clase)}</td></tr>`;
       lastClase = it.clase;
     }
     const cons = CONS_LABEL[it._cons].txt;
+    const pres = esc(it.presentacion) + (it._nota ? ` <em>(${esc(it._nota)})</em>` : "");
     body += `<tr class="${it._stock==='out'?'pout':''}">
       <td>${esc(it.comercial)}</td>
       <td>${esc(it.principio)}</td>
-      <td>${esc(it.presentacion)}</td>
+      <td>${pres}</td>
       <td>${esc(it.posologia)}</td>
       <td>${cons}</td>
       <td>${STOCK_LABEL[it._stock].txt}</td>
+      <td>${finTxt[it._fin] || "Sí"}</td>
     </tr>`;
   }
   area.innerHTML = `
@@ -1105,9 +1156,9 @@ function renderPrint(rows){
     <table>
       <thead><tr>
         <th>Nombre comercial</th><th>Principio activo</th><th>Presentación</th>
-        <th>Posología</th><th>Conservante</th><th>Stock</th>
+        <th>Posología</th><th>Conservante</th><th>Stock</th><th>Financ. SS</th>
       </tr></thead>
-      <tbody>${body || '<tr><td colspan="6">Sin resultados con los filtros actuales.</td></tr>'}</tbody>
+      <tbody>${body || '<tr><td colspan="7">Sin resultados con los filtros actuales.</td></tr>'}</tbody>
     </table>`;
 }
 
